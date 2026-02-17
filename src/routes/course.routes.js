@@ -22,6 +22,8 @@ import {
   updateLanguage,
   updateThumbnail,
   updateTitle,
+  updateCourseCategory,
+  submitForReview
 } from "../controllers/course.controller.js";
 import { upload } from "../middelwares/multer.middelware.js";
 import { courseViews } from "../controllers/view.controller.js";
@@ -36,11 +38,13 @@ router.route("/course/updateTitle/:_id").patch(updateTitle);
 router.route("/course/updateDescription/:_id").patch(updateDescription);
 router.route("/course/updateLanguage/:_id").patch(updateLanguage);
 router.route("/course/updatePrice/:_id").patch(updateActualPrice);
+router.route("/course/updateCategory/:_id").patch(updateCourseCategory);
 router
   .route("/course/updateThumbnail/:_id")
   .patch(upload.single("thumbnail"), updateThumbnail);
 router.route("/course/updateDuration/:_id").patch(updateDuration);
 router.route("/course/publish/:_id").patch(publishCourse);
+router.route("/course/submit-for-review/:_id").patch(submitForReview  );
 
 router.route("/course/addChapter/:_id").post(addChapter, getCourseData);
 

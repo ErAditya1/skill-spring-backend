@@ -74,6 +74,7 @@ app.use(passport.session()); // persistent login sessions
 
 // routes
 import userRouter from "./routes/user.routes.js";
+import adminRouter from "./routes/admin.routes.js";
 import postRouter from "./routes/post.routes.js";
 import likeRouter from "./routes/like.routes.js";
 import saveRouter from "./routes/save.routes.js";
@@ -92,6 +93,7 @@ const pushSubscriptions = [];
 //routes declaration
 
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/posts", postRouter);
 app.use("/api/v1/like", likeRouter);
 app.use("/api/v1/save", saveRouter);

@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
-import  cron from "node-cron"
+import cron from "node-cron";
 import {
   uploadOnCloudinary,
   deleteCloudinaryFile,
@@ -35,7 +35,7 @@ export const generateAccessAndRefereshTokens = async (userId, req) => {
     // Find the device in the user's devices array by deviceId
     const deviceIndex = user.devices.findIndex(
       (device) =>
-        device.deviceId === deviceId || device.accessToken === req.accessToken
+        device.deviceId === deviceId || device.accessToken === req.accessToken,
     );
 
     const isFirst = user.devices.length <= 1 ? true : false;
@@ -47,7 +47,7 @@ export const generateAccessAndRefereshTokens = async (userId, req) => {
       device.attemptCount = 1;
       device.accessToken = accessToken;
       device.refreshToken = refreshToken;
-      device.expiresAt = Date.now() +  10 * 24 * 60 * 60 * 1000;  // 10 days from last login
+      device.expiresAt = Date.now() + 10 * 24 * 60 * 60 * 1000; // 10 days from last login
       device.isFirst = isFirst;
     } else {
       // If device doesn't exist, add a new device entry
@@ -71,7 +71,7 @@ export const generateAccessAndRefereshTokens = async (userId, req) => {
     // Handle errors
     throw new ApiError(
       500,
-      "Something went wrong while generating access and refresh tokens"
+      "Something went wrong while generating access and refresh tokens",
     );
   }
 };
@@ -92,43 +92,42 @@ export const generateUsername = async (proposedName) => {
     });
 };
 
-
 // Function to remove expired devices from the devices array
 async function removeExpiredDevices() {
-  console.log('Cleanup task executed.');
+  console.log("Cleanup task executed.");
   try {
     const currentTime = new Date();
     // Find users whose devices have expired
     const users = await User.find({
       devices: {
         $elemMatch: {
-          expiresAt: { $lt : currentTime }, // Looking for expired devices inside the array
-        }
-      }
+          expiresAt: { $lt: currentTime }, // Looking for expired devices inside the array
+        },
+      },
     });
 
-  console.log(users);
+    console.log(users);
 
-  for (const user of users) {
-    // Filter out the expired devices from the devices array
-    user.devices = user.devices.filter(device => new Date(device.expiresAt) > currentTime);
+    for (const user of users) {
+      // Filter out the expired devices from the devices array
+      user.devices = user.devices.filter(
+        (device) => new Date(device.expiresAt) > currentTime,
+      );
 
-    // Save the updated user document after removing expired devices
-    await user.save();
-  }
+      // Save the updated user document after removing expired devices
+      await user.save();
+    }
 
-  // console.log('Expired devices cleaned up successfully.');
+    // console.log('Expired devices cleaned up successfully.');
   } catch (error) {
     consple.log(error);
   }
 }
 
 // Schedule the cleanup function to run daily at midnight (00:00)
-cron.schedule('* * * * *', async () => {
+cron.schedule("* * * * *", async () => {
   // await removeExpiredDevices();
-  
 });
-
 
 const getUserName = asyncHandler(async (req, res) => {
   const { username } = req.query;
@@ -145,7 +144,7 @@ const getUserName = asyncHandler(async (req, res) => {
     return res
       .status(201)
       .json(
-        new ApiResponse(200, { username: userName }, "Username is unavailable")
+        new ApiResponse(200, { username: userName }, "Username is unavailable"),
       );
   } else {
     return res
@@ -155,7 +154,7 @@ const getUserName = asyncHandler(async (req, res) => {
 });
 
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, username ,role} = req.body;
+  const { name, email, password, username, role } = req.body;
   console.log({ name, email, password, username });
   if (
     [name, email, password, username].some((field) => {
@@ -192,15 +191,15 @@ const registerUser = asyncHandler(async (req, res) => {
           new ApiResponse(
             200,
             existingUserByEmail,
-            "User Allready registered with this email"
-          )
+            "User Allready registered with this email",
+          ),
         );
     } else {
       existingUserByEmail.verifyCode = verifyCode;
       existingUserByEmail.verifyCodeExpiry = CodeExpiryTime;
       const user = await existingUserByEmail.save();
       const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
+        "-password -refreshToken",
       );
       const emailResponse = await sendVerificationEmail({
         email,
@@ -216,8 +215,8 @@ const registerUser = asyncHandler(async (req, res) => {
           new ApiResponse(
             200,
             createdUser,
-            "User already registered. Please verify your account."
-          )
+            "User already registered. Please verify your account.",
+          ),
         );
     }
   } else {
@@ -232,13 +231,13 @@ const registerUser = asyncHandler(async (req, res) => {
       // emailVerified:true
     });
     const createdUser = await User.findById(user._id).select(
-      "-password -refreshToken"
+      "-password -refreshToken",
     );
 
     if (!createdUser) {
       throw new ApiError(
         500,
-        "Something went wrong while registering the user"
+        "Something went wrong while registering the user",
       );
     }
     const emailResponse = await sendVerificationEmail({
@@ -256,8 +255,8 @@ const registerUser = asyncHandler(async (req, res) => {
         new ApiResponse(
           200,
           createdUser,
-          "User registerd successfully. Please verify your account."
-        )
+          "User registerd successfully. Please verify your account.",
+        ),
       );
   }
 });
@@ -280,7 +279,7 @@ const registerWithSocial = asyncHandler(async (req, res) => {
   if (existingUser) {
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
       existingUser._id,
-      req
+      req,
     );
     return res
       .status(200)
@@ -288,8 +287,8 @@ const registerWithSocial = asyncHandler(async (req, res) => {
         new ApiResponse(
           200,
           { user: existingUser, accessToken, refreshToken },
-          "User logged in successfully"
-        )
+          "User logged in successfully",
+        ),
       );
   }
   const existingVerifiedUserByUsername = await User.findOne({
@@ -313,7 +312,7 @@ const registerWithSocial = asyncHandler(async (req, res) => {
 
   const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
     user._id,
-    req
+    req,
   );
   return res
     .status(200)
@@ -321,8 +320,8 @@ const registerWithSocial = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         { user: loggedInUser, accessToken, refreshToken },
-        "User logged in successfully"
-      )
+        "User logged in successfully",
+      ),
     );
 });
 
@@ -337,12 +336,14 @@ const handleSocialLogin = asyncHandler(async (req, res) => {
 
   const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
     user._id,
-    req
+    req,
   );
 
   const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    httpOnly: true, // Cannot be accessed by JavaScript
+    secure: true,
+    maxAge: 3600 * 1000,
+    sameSite: "None",
   };
 
   return res
@@ -351,7 +352,7 @@ const handleSocialLogin = asyncHandler(async (req, res) => {
     .cookie("refreshToken", refreshToken, options) // set the refresh token in the cookie
     .redirect(
       // redirect user to the frontend with access and refresh token in case user is not using cookies
-      `${process.env.CLIENT}/?accessToken=${accessToken}&refreshToken=${refreshToken}`
+      `${process.env.CLIENT_URL}/?accessToken=${accessToken}&refreshToken=${refreshToken}`,
     );
 });
 
@@ -384,35 +385,44 @@ const resendCode = asyncHandler(async (req, res) => {
 
 const verifyCode = asyncHandler(async (req, res) => {
   const { username, code } = req.body;
-  console.log("ksjndvjnxcjlk")
+
+  if (!username || !code) {
+    throw new ApiError(400, "Username and verification code are required");
+  }
+
   const user = await User.findOne({ username });
+
   if (!user) {
     throw new ApiError(404, "User does not exist");
   }
+
   if (user.emailVerified) {
     throw new ApiError(409, "User is already verified");
   }
+
   if (user.verifyCode !== code) {
-    throw new ApiError(401, "Invalid verification code");
+    throw new ApiError(400, "Invalid verification code");
   }
+
   if (user.verifyCodeExpiry < Date.now()) {
-    throw new ApiError(401, "Verification code has expired");
+    throw new ApiError(403, "Verification code has expired");
   }
+
   user.verifyCode = null;
+  user.verifyCodeExpiry = null;
   user.emailVerified = true;
+
   await user.save();
+
   const verifiedUser = await User.findById(user._id).select(
-    "-password -refreshToken"
+    "-password -refreshToken",
   );
-  const emailResponse = sendWelcomeEmail({
+
+  await sendWelcomeEmail({
     email: user.email,
     username: user.username,
   });
-  if (!emailResponse) {
-    console.log(emailResponse);
-  }
 
-  console.log(verifiedUser);
   return res
     .status(200)
     .json(new ApiResponse(200, verifiedUser, "User verified successfully"));
@@ -444,7 +454,7 @@ const loginUser = asyncHandler(async (req, res) => {
   // Find the device in the user's devices array
   const deviceId = req.headers["x-unique-id"] || req.query.deviceId;
   const deviceIndex = user.devices.findIndex(
-    (device) => device.deviceId === deviceId
+    (device) => device.deviceId === deviceId,
   );
   let device = deviceIndex !== -1 ? user.devices[deviceIndex] : null;
 
@@ -477,7 +487,7 @@ const loginUser = asyncHandler(async (req, res) => {
     // User has attempted 5 failed logins within the last 24 hours
     throw new ApiError(
       403,
-      "Account is temporarily blocked. Please try again after 24 hours."
+      "Account is temporarily blocked. Please try again after 24 hours.",
     );
   }
 
@@ -509,7 +519,7 @@ const loginUser = asyncHandler(async (req, res) => {
   // Generate access and refresh tokens
   const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
     user._id,
-    req
+    req,
   );
 
   // Save the updated user document
@@ -517,7 +527,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   // Exclude password and devices from the response
   const loggedInUser = await User.findById(user._id).select(
-    "-password -devices"
+    "-password -devices",
   );
 
   // Set the cookie options
@@ -546,8 +556,8 @@ const loginUser = asyncHandler(async (req, res) => {
           accessToken: accessToken,
           refreshToken: refreshToken,
         },
-        "User logged in successfully"
-      )
+        "User logged in successfully",
+      ),
     );
 });
 
@@ -594,8 +604,8 @@ const requestResetPassword = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         "",
-        `We sent an email to ${user.email} with a link to get back into your account.`
-      )
+        `We sent an email to ${user.email} with a link to get back into your account.`,
+      ),
     );
 });
 
@@ -624,8 +634,8 @@ const resetPassword = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         user,
-        "Your password has been reset successfully. You can now log in with your new password."
-      )
+        "Your password has been reset successfully. You can now log in with your new password.",
+      ),
     );
 });
 
@@ -645,7 +655,7 @@ const logOutUser = asyncHandler(async (req, res) => {
 
   // Find the device entry in the user's devices array
   const deviceIndex = user.devices.findIndex(
-    (device) => device.deviceId === deviceId
+    (device) => device.deviceId === deviceId,
   );
 
   if (deviceIndex === -1) {
@@ -658,8 +668,10 @@ const logOutUser = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false });
 
   const options = {
-    httpOnly: true,
+    httpOnly: true, // Cannot be accessed by JavaScript
     secure: true,
+    maxAge: 3600 * 1000,
+    sameSite: "None",
   };
   return res
     .status(200)
@@ -675,10 +687,25 @@ const getAllUsers = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, users, "All users is fetched successfully"));
 });
 
+ function getCookieValue(cookieString, name) {
+  
+  if(!cookieString) return null;
+  return cookieString
+    .split("; ")
+    .find((row) => row.startsWith(name + "="))
+    ?.split("=")[1]
+}
+
 const refreshAccessToken = asyncHandler(async (req, res) => {
+
+  const cookieString = req.headers["cookie"];
+
+  console.log(cookieString);
+
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
-  const deviceId = req.headers["x-unique-id"]; // Device ID from headers
+    req.cookies.refreshToken || req.body.refreshToken||
+    getCookieValue(cookieString, "refreshToken");
+  const deviceId = req.headers["x-unique-id"] ||getCookieValue(cookieString, "uniqueId"); // Device ID from headers
 
   console.log(incomingRefreshToken);
   console.log("Request received for refresh token");
@@ -695,7 +722,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     // Verify the refresh token
     const decodedToken = Jwt.verify(
       incomingRefreshToken,
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
     );
     const user = await User.findById(decodedToken._id).select("-password");
 
@@ -714,20 +741,21 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     if (incomingRefreshToken !== device.refreshToken) {
       throw new ApiError(
         401,
-        "Refresh token is expired or incorrect for this device."
+        "Refresh token is expired or incorrect for this device.",
       );
     }
 
     // Generate new access and refresh tokens
     const options = {
-      httpOnly: true,
-      secure: true, // Ensure this is set to true in production
-
+      httpOnly: true, // Cannot be accessed by JavaScript
+      secure: true,
+      maxAge: 3600 * 1000,
+      sameSite: "None",
     };
 
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
       user._id,
-      req
+      req,
     );
 
     return res
@@ -743,8 +771,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             refreshToken,
             // device: device, // Include device info in the response
           },
-          "Access token and refresh token refreshed successfully"
-        )
+          "Access token and refresh token refreshed successfully",
+        ),
       );
   } catch (error) {
     throw new ApiError(401, error?.message || "Invalid refresh token.");
@@ -774,8 +802,8 @@ const getCurrentUser = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         { user: req.user, device: req.device },
-        "Current user fetched successfully"
-      )
+        "Current user fetched successfully",
+      ),
     );
 });
 
@@ -872,7 +900,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         },
       },
     },
-    { new: true }
+    { new: true },
   ).select("-password ");
 
   return res

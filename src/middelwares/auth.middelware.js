@@ -76,3 +76,11 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
   }
 });
 
+
+
+export const isAdmin = asyncHandler(async(req, res, next) => {
+  if(req.user.role !== "admin"){
+    throw new ApiError(403, "Forbidden. Admins only.");
+  }
+  next();
+})

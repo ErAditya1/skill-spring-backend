@@ -8,6 +8,10 @@ const courseSchema = new Schema(
       ref: "User",
       required: true,
     }, 
+    category:{
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+    },
     thumbnail:  {
       public_id:{
         type: String,
@@ -37,11 +41,16 @@ const courseSchema = new Schema(
     },
     printPrice: {
       type: Number,
-  
     },
     sellingPrice: {
       type: Number,
       
+    },
+    // 🔥 Approval Workflow Status
+    status: {
+      type: String,
+      enum: ["draft", "pending", "approved", "rejected"],
+      default: "draft",
     },
     discount:{
       type: Number,

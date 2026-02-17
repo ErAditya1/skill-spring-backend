@@ -34,10 +34,7 @@ const router = Router();
 router.route("/check-username").get(getUserName);
 router.route("/register").post(registerUser);
 router.route("/register-social").post(registerWithSocial);
-router.route("/verify-code").post((req,res,next)=>{
-  console.log("ksjndvjnxcjlk")
-  return next()
-},verifyCode).patch(resendCode);
+router.route("/verify-code").post(verifyCode).patch(resendCode);
 router.route("/login").post(loginUser);
 
 // Social Login

@@ -32,10 +32,17 @@ const userSchema = new Schema(
       type: String,
       enum: ["admin", "student", "teacher"], // Define allowed user types
       default: "student",
-      index: true,  // Index role for better querying
+      index: true, // Index role for better querying
     },
+
+    status: {
+      type: String,
+      enum: ["active", "blocked"],
+      default: "active",
+    },
+
     subscription: {
-      endpoint: { type: String},
+      endpoint: { type: String },
       keys: {
         p256dh: { type: String },
         auth: { type: String },
@@ -65,7 +72,7 @@ const userSchema = new Schema(
     },
     emailVerified: {
       type: Boolean,
-      default: false,  // Ensures email is verified before login
+      default: false, // Ensures email is verified before login
     },
     isOnline: {
       type: Boolean,
@@ -97,14 +104,14 @@ const userSchema = new Schema(
         accessToken: {
           type: String,
         },
-        isFirst:{
+        isFirst: {
           type: Boolean,
           default: false,
         },
         deviceId: {
           type: String,
         },
-        ipAddress:{
+        ipAddress: {
           type: String,
         },
         loginStatus: {
@@ -150,7 +157,7 @@ const userSchema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Pre-save hook to hash password
@@ -177,7 +184,7 @@ userSchema.methods.generateAccessToken = function () {
     process.env.JWT_SECRET,
     {
       expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
-    }
+    },
   );
 };
 
@@ -189,7 +196,7 @@ userSchema.methods.generateRefreshToken = function () {
     process.env.JWT_SECRET,
     {
       expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
-    }
+    },
   );
 };
 
@@ -201,7 +208,7 @@ userSchema.methods.generateResetToken = function () {
     process.env.JWT_SECRET,
     {
       expiresIn: process.env.RESET_TOKEN_EXPIRY,
-    }
+    },
   );
 };
 
@@ -209,7 +216,5 @@ userSchema.methods.generateResetToken = function () {
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
 userSchema.index({ role: 1 });
-
-
 
 export const User = mongoose.model("User", userSchema);

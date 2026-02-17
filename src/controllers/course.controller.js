@@ -44,7 +44,7 @@ const updateCourse = asyncHandler(async (req, res) => {
     startOn,
     endOn,
   } = req.body;
- 
+
   if (
     [
       title,
@@ -62,7 +62,7 @@ const updateCourse = asyncHandler(async (req, res) => {
     throw new ApiError(404, "All fields are required");
   }
   const discount = Math.floor(
-    ((actualPrice - discountPrice) / actualPrice) * 100 || 0
+    ((actualPrice - discountPrice) / actualPrice) * 100 || 0,
   );
 
   const thumbnailFilePath = req.file?.path;
@@ -125,7 +125,11 @@ const updateDescription = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponse(200, course, "Course description is updated successfully")
+      new ApiResponse(
+        200,
+        course,
+        "Course description is updated successfully",
+      ),
     );
 });
 
@@ -143,7 +147,7 @@ const updateLanguage = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponse(200, course, "Course language is updated successfully")
+      new ApiResponse(200, course, "Course language is updated successfully"),
     );
 });
 
@@ -167,8 +171,8 @@ const updateActualPrice = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         course,
-        "Course actual price is updated successfully"
-      )
+        "Course actual price is updated successfully",
+      ),
     );
 });
 
@@ -212,8 +216,8 @@ const updateThumbnail = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         newCourse,
-        "Course thumbnail is updated successfully"
-      )
+        "Course thumbnail is updated successfully",
+      ),
     );
 });
 
@@ -232,9 +236,56 @@ const updateDuration = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponse(200, course, "Course duration is updated successfully")
+      new ApiResponse(200, course, "Course duration is updated successfully"),
     );
 });
+
+// PATCH /v1/courses/course/update-category/:course_id
+
+export const updateCourseCategory = asyncHandler(async (req, res) => {
+  const { _id } = req.params;
+  const { category } = req.body;
+
+  const updatedCourse = await Course.findByIdAndUpdate(
+    _id,
+    { category },
+    { new: true },
+  ).populate("category");
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        updatedCourse,
+        "Course category updated successfully",
+      ),
+    );
+});
+
+export const submitForReview = asyncHandler(async (req, res) => {
+  const { _id } = req.params;
+
+  const course = await Course.findById(_id);
+
+  if (!course) {
+    throw new ApiError(404, "Course not found");
+  }
+
+  if (course.author.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "Not authorized");
+  }
+
+  course.status = "pending";
+  await course.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, course, "Course submitted for review")
+  );
+});
+
+
+
 
 const publishCourse = asyncHandler(async (req, res) => {
   const { _id } = req.params;
@@ -256,6 +307,7 @@ const publishCourse = asyncHandler(async (req, res) => {
         as: "chapters",
       },
     },
+
     {
       $lookup: {
         from: "videos",
@@ -290,6 +342,7 @@ const publishCourse = asyncHandler(async (req, res) => {
       $project: {
         _id: 1,
         title: 1,
+        category: 1,
         description: 1,
         language: 1,
         isPublished: 1,
@@ -312,6 +365,9 @@ const publishCourse = asyncHandler(async (req, res) => {
   if (!validatedCourse[0]?.language) {
     throw new ApiError(404, "Language is required");
   }
+  if (!validatedCourse[0]?.category) {
+    throw new ApiError(404, "Category is required");
+  }
   if (
     validatedCourse[0]?.discount <= -1 ||
     validatedCourse[0]?.discount > 100
@@ -328,7 +384,7 @@ const publishCourse = asyncHandler(async (req, res) => {
   if (!validatedCourse[0]?.publishedChapters?.length) {
     throw new ApiError(
       404,
-      "Please publish at least one chapter should be add"
+      "Please publish at least one chapter should be add",
     );
   }
 
@@ -344,7 +400,7 @@ const publishCourse = asyncHandler(async (req, res) => {
     return res
       .status(200)
       .json(
-        new ApiResponse(200, course, "Course is Un published successfully")
+        new ApiResponse(200, course, "Course is Un published successfully"),
       );
   }
   course.isPublished = true;
@@ -404,30 +460,59 @@ const removeCourse = asyncHandler(async (req, res) => {
 
 const getData = asyncHandler(async (req, res) => {
   const { _id } = req.params;
+
   if (!_id) {
     throw new ApiError(404, "Course Id is required");
   }
-  // const course = await Course.findById(_id);
+
   const course = await Course.aggregate([
     {
       $match: {
         _id: new mongoose.Types.ObjectId(_id),
       },
     },
+
+    /* ---------------- CATEGORY LOOKUP ---------------- */
     {
-      $unwind: "$chapters",
+      $lookup: {
+        from: "categories", // correct collection name
+        localField: "category",
+        foreignField: "_id",
+        as: "category",
+      },
     },
+    {
+      $unwind: {
+        path: "$category",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    /* ---------------- CHAPTERS UNWIND ---------------- */
+    {
+      $unwind: {
+        path: "$chapters",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    /* ---------------- VIDEO LOOKUP ---------------- */
     {
       $lookup: {
         from: "videos",
-        localField: "chapters._id",
+        localField: "chapters",
         foreignField: "_id",
         as: "videoItem",
       },
     },
     {
-      $unwind: "$videoItem",
+      $unwind: {
+        path: "$videoItem",
+        preserveNullAndEmptyArrays: true,
+      },
     },
+
+    /* ---------------- MERGE VIDEO DATA ---------------- */
     {
       $addFields: {
         "chapters._id": "$videoItem._id",
@@ -436,40 +521,39 @@ const getData = asyncHandler(async (req, res) => {
         "chapters.isFree": "$videoItem.isFree",
       },
     },
+
+    /* ---------------- GROUP BACK ---------------- */
     {
       $group: {
         _id: "$_id",
+        title: { $first: "$title" },
+        description: { $first: "$description" },
+        thumbnail: { $first: "$thumbnail" },
+        language: { $first: "$language" },
+        category: { $first: "$category" },
+        printPrice: { $first: "$printPrice" },
+        discount: { $first: "$discount" },
+        sellingPrice: { $first: "$sellingPrice" },
+        from: { $first: "$from" },
+        to: { $first: "$to" },
         chapters: { $push: "$chapters" },
       },
     },
-    {
-      $project: {
-        _id: 1,
-        title: 1,
-        description: 1,
-        thumbnail: 1,
-        language: 1,
-        chapters: 1,
-        chapter: 1,
-        printPrice: 1,
-        discount: 1,
-        sellingPrice: 1,
-        from: 1,
-        to: 1,
-      },
-    },
   ]);
-  if (!course) {
+
+  if (!course.length) {
     throw new ApiError(404, "Course not found");
   }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, course, "Course is fetched successfully"));
+    .json(new ApiResponse(200, course[0], "Course fetched successfully"));
 });
 
 const getEnrolledCourses = asyncHandler(async (req, res) => {
-  
-  const course = await Enrolled.find({user_Id:req.user._id}).select('course_Id')
+  const course = await Enrolled.find({ user_Id: req.user._id }).select(
+    "course_Id",
+  );
 
   if (!course) {
     throw new ApiError(404, "Course not found");
@@ -478,6 +562,7 @@ const getEnrolledCourses = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, course, "Course is fetched successfully"));
 });
+
 const getAllCourses = asyncHandler(async (req, res) => {
   const course = await Course.find({ isPublished: true }).select("_id");
 
@@ -489,12 +574,14 @@ const getAllCourses = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, course, "Course is fetched successfully"));
 });
 
+
+
+
+
 const getAdminCourses = asyncHandler(async (req, res) => {
   // const count = await Course.countDocuments(query);
 
   const course = await Course.find({ author: req.user });
-
- 
 
   if (!course) {
     throw new ApiError(404, "Course not found");
@@ -533,6 +620,20 @@ const getPublishedCoursesData = asyncHandler(async (req, res) => {
               },
             },
           ],
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $unwind: {
+          path: "$category",
+          preserveNullAndEmptyArrays: true,
         },
       },
 
@@ -620,6 +721,10 @@ const getPublishedCoursesData = asyncHandler(async (req, res) => {
         $project: {
           author: 1,
           isAuthor: 1,
+          category: {
+            _id: "$category._id",
+            name: "$category.name",
+          },
           thumbnail: 1,
           title: 1,
           description: 1,
@@ -637,7 +742,11 @@ const getPublishedCoursesData = asyncHandler(async (req, res) => {
     return res
       .status(200)
       .json(
-        new ApiResponse(200, courseData, "Course all deta fetched successfully")
+        new ApiResponse(
+          200,
+          courseData,
+          "Course all deta fetched successfully",
+        ),
       );
   } catch (error) {
     console.log(error);
@@ -715,6 +824,21 @@ const getCourseData = asyncHandler(async (req, res) => {
                 ],
               },
             },
+            {
+              $lookup: {
+                from: "categories",
+                localField: "category",
+                foreignField: "_id",
+                as: "category",
+              },
+            },
+            {
+              $unwind: {
+                path: "$category",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+
             {
               $addFields: {
                 author: {
@@ -1023,7 +1147,7 @@ const getCourseData = asyncHandler(async (req, res) => {
                 channelName: {
                   $arrayElemAt: ["$author.name", 0],
                 },
-                author:{
+                author: {
                   $arrayElemAt: ["$author", 0],
                 },
                 views: {
@@ -1045,14 +1169,14 @@ const getCourseData = asyncHandler(async (req, res) => {
                 channelName: 1,
                 views: 1,
                 uploadedDate: 1,
-                author:1
+                author: 1,
               },
             },
           ],
         },
       },
       {
-        $lookup:{
+        $lookup: {
           from: "quizzes", // Convert
           localField: "_id",
           foreignField: "course_Id",
@@ -1082,20 +1206,19 @@ const getCourseData = asyncHandler(async (req, res) => {
               },
             },
             {
-              $lookup:{
-                from: 'quizattempts',
+              $lookup: {
+                from: "quizattempts",
                 localField: "_id",
                 foreignField: "quiz_Id",
                 as: "attempts",
-                
-              }
+              },
             },
             {
               $addFields: {
                 channelName: {
                   $arrayElemAt: ["$author.name", 0],
                 },
-                author:{
+                author: {
                   $arrayElemAt: ["$author", 0],
                 },
                 views: {
@@ -1117,11 +1240,11 @@ const getCourseData = asyncHandler(async (req, res) => {
                 channelName: 1,
                 views: 1,
                 uploadedDate: 1,
-                author:1
+                author: 1,
               },
             },
           ],
-        }
+        },
       },
       // Getting author of the course
       {
@@ -1553,7 +1676,7 @@ const getCourseData = asyncHandler(async (req, res) => {
               as: "chapter",
               cond: {
                 $or: [
-                  { $eq: [req.user?._id, "$$chapter.author._id"]},
+                  { $eq: [req.user?._id, "$$chapter.author._id"] },
                   { $eq: ["$$chapter.isFree", true] },
                   { $in: [req.user?._id, "$enrolledStudent.studentData._id"] },
                 ],
@@ -1589,6 +1712,10 @@ const getCourseData = asyncHandler(async (req, res) => {
           title: 1,
           description: 1,
           language: 1,
+          category: {
+            _id: "$category._id",
+            name: "$category.name",
+          },
           from: 1,
           to: 1,
           isPublished: 1,
@@ -1606,7 +1733,7 @@ const getCourseData = asyncHandler(async (req, res) => {
           views: 1,
           viewers: 1,
           chapters: 1,
-          quizzes:1,
+          quizzes: 1,
           chat: 1,
         },
       },
@@ -1617,8 +1744,8 @@ const getCourseData = asyncHandler(async (req, res) => {
         new ApiResponse(
           200,
           courseData[0],
-          "Course all deta fetched successfully"
-        )
+          "Course all deta fetched successfully",
+        ),
       );
   } catch (error) {
     console.log(error);
@@ -1667,6 +1794,21 @@ const getEditCourseData = asyncHandler(async (req, res) => {
       // all videos
       {
         $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $unwind: {
+          path: "$category",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      {
+        $lookup: {
           from: "videos",
           localField: "_id",
           foreignField: "course_id",
@@ -1686,7 +1828,7 @@ const getEditCourseData = asyncHandler(async (req, res) => {
           ],
         },
       },
-      //get all quizzes 
+      //get all quizzes
       {
         $lookup: {
           from: "quizzes",
@@ -1716,25 +1858,20 @@ const getEditCourseData = asyncHandler(async (req, res) => {
           title: 1,
           description: 1,
           language: 1,
+          category: {
+            _id: "$category._id",
+            name: "$category.name",
+          },
           from: 1,
           to: 1,
           isPublished: 1,
           printPrice: 1,
           sellingPrice: 1,
           discount: 1,
-          enrolledStudentCount: 1,
-          enrolledStudent: 1,
-          isEnrolled: 1,
-          comments: 1,
-          commentCount: 1,
-          likeCount: 1,
-          isLiked: 1,
-          likes: 1,
-          views: 1,
-          viewers: 1,
           freeChapters: 1,
           chapters: 1,
-          quizzes:1,
+          quizzes: 1,
+          status:1,
         },
       },
     ]);
@@ -1744,7 +1881,11 @@ const getEditCourseData = asyncHandler(async (req, res) => {
     return res
       .status(200)
       .json(
-        new ApiResponse(200, courseData, "Course all deta fetched successfully")
+        new ApiResponse(
+          200,
+          courseData,
+          "Course all deta fetched successfully",
+        ),
       );
   } catch (error) {
     console.log(error);
@@ -1836,7 +1977,7 @@ const orderSummary = asyncHandler(async (req, res) => {
             else: false,
           },
         },
-        author:{
+        author: {
           $arrayElemAt: ["$author", 0],
         },
         isAuther: {
@@ -1851,12 +1992,12 @@ const orderSummary = asyncHandler(async (req, res) => {
 
     {
       $project: {
-        author:1,
+        author: 1,
         isAuthor: 1,
         thumbnail: 1,
         title: 1,
         printPrice: 1,
-        sellingPrice:1,
+        sellingPrice: 1,
         discount: 1,
         enrolledStudent: 1,
         isEnrolled: 1,
@@ -1865,7 +2006,9 @@ const orderSummary = asyncHandler(async (req, res) => {
   ]);
   return res
     .status(200)
-    .json(new ApiResponse(200, order[0], "Course all deta fetched successfully"));
+    .json(
+      new ApiResponse(200, order[0], "Course all deta fetched successfully"),
+    );
 });
 
 const getFreeVideos = asyncHandler(async () => {
@@ -1906,7 +2049,6 @@ const getFreeVideos = asyncHandler(async () => {
 });
 
 const addChapter = asyncHandler(async (req, res, next) => {
-
   const { title, description, videoUrl } = req.body;
   const { _id } = req.params;
 
@@ -1917,11 +2059,11 @@ const addChapter = asyncHandler(async (req, res, next) => {
     throw new ApiError(404, "All fields are required");
   }
 
-  const {videoId, videoType} = getVideoInfo(videoUrl)
+  const { videoId, videoType } = getVideoInfo(videoUrl);
 
   const isVideo = await Video.findOne({
     videoId,
-  })
+  });
   if (isVideo) {
     throw new ApiError(404, "Video with the given ID already exists");
   }
@@ -1937,7 +2079,6 @@ const addChapter = asyncHandler(async (req, res, next) => {
   if (!video) {
     throw new ApiError(500, "Failed to create video");
   }
-
 
   return res
     .status(200)
@@ -1955,7 +2096,7 @@ const reorderChapters = asyncHandler(async (req, res) => {
   const course = await Course.findByIdAndUpdate(
     _id,
     { updateData },
-    { new: true }
+    { new: true },
   );
 
   if (!course) {
@@ -1966,7 +2107,6 @@ const reorderChapters = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, course, "Chapters reordered successfully"));
 });
-
 
 export {
   addCourse,
@@ -1982,6 +2122,7 @@ export {
   removeCourse,
   getData,
   getAllCourses,
+  
   getPublishedCoursesData,
   getAdminCourses,
   getCourseData,

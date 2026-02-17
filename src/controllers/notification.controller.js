@@ -60,7 +60,7 @@ export const pushNotification = async(id)=>{
     icon: "https://res.cloudinary.com/dcu0jjqte/image/upload/v1732335257/brightveil_light_yr7l9v.jpg",
     image: "https://res.cloudinary.com/dcu0jjqte/image/upload/v1732335257/brightveil_light_yr7l9v.jpg",
     badge: "https://res.cloudinary.com/dcu0jjqte/image/upload/v1732335257/brightveil_light_yr7l9v.jpg",
-    url: "https://brightveil.vercel.app/",
+    url: "https://skillspring-sigma.vercel.app/",
     timestamp: Date.now(),
     data: {
       messageId: "12345",
