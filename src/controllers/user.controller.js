@@ -1753,6 +1753,125 @@ const getUserProfile = asyncHandler(async (req, res) => {
   }
 });
 
+
+ const getTeacherProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username) {
+    throw new ApiError(400, "Username is required");
+  }
+
+  const teacher = await User.aggregate([
+    {
+      $match: {
+        username: username,
+        role: "teacher", // make sure role exists
+      },
+    },
+
+    /* ================= COURSES ================= */
+    {
+      $lookup: {
+        from: "courses",
+        localField: "_id",
+        foreignField: "author",
+        as: "courses",
+        pipeline: [
+          {
+            $match: { isPublished: true },
+          },
+          {
+            $project: {
+              _id: 1,
+              title: 1,
+              thumbnail: 1,
+              sellingPrice: 1,
+              rating: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= ENROLLMENTS ================= */
+    {
+      $lookup: {
+        from: "enrolleds",
+        localField: "_id",
+        foreignField: "teacher_Id", // if you store teacher reference
+        as: "students",
+      },
+    },
+
+    /* ================= FOLLOWERS ================= */
+    {
+      $lookup: {
+        from: "follows",
+        localField: "_id",
+        foreignField: "following",
+        as: "followers",
+      },
+    },
+
+    /* ================= REVIEWS ================= */
+    {
+      $lookup: {
+        from: "reviews",
+        localField: "_id",
+        foreignField: "teacher_Id",
+        as: "reviews",
+      },
+    },
+
+    /* ================= CALCULATED FIELDS ================= */
+    {
+      $addFields: {
+        totalCourses: { $size: "$courses" },
+        totalStudents: { $size: "$students" },
+        followersCount: { $size: "$followers" },
+        totalReviews: { $size: "$reviews" },
+        rating: {
+          $cond: {
+            if: { $gt: [{ $size: "$reviews" }, 0] },
+            then: { $avg: "$reviews.rating" },
+            else: 0,
+          },
+        },
+      },
+    },
+
+    /* ================= FINAL PROJECTION ================= */
+    {
+      $project: {
+        name: 1,
+        username: 1,
+        bio: 1,
+        avatar: 1,
+        coverImage: 1,
+        expertise: 1,
+        totalCourses: 1,
+        totalStudents: 1,
+        totalReviews: 1,
+        rating: { $round: ["$rating", 1] },
+        followersCount: 1,
+        courses: 1,
+      },
+    },
+  ]);
+
+  if (!teacher || teacher.length === 0) {
+    throw new ApiError(404, "Teacher not found");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      teacher[0],
+      "Teacher profile fetched successfully"
+    )
+  );
+});
+
 const getUserAccount = asyncHandler(async (req, res) => {
   const { _id } = req.params;
   if (!_id) {
@@ -1924,4 +2043,5 @@ export {
   getUserAccount,
   followToNewUser,
   getWatchHistory,
+  getTeacherProfile,
 };

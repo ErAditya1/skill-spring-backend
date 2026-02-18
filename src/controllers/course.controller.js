@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { Course } from "../models/course.model.js";
-
+import PDFDocument from "pdfkit"
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
@@ -12,6 +12,7 @@ import { Video } from "../models/video.model.js";
 import { Chat } from "../models/chat.model.js";
 import { Enrolled } from "../models/enrolled.model.js";
 import { getVideoInfo } from "./video.controller.js";
+import { Review } from "../models/review.model.js";
 
 const addCourse = asyncHandler(async (req, res) => {
   const author = req.user._id;
@@ -576,6 +577,175 @@ const getAllCourses = asyncHandler(async (req, res) => {
 
 
 
+export const getAllPublicCourses = asyncHandler(async (req, res) => {
+  const {
+    search = "",
+    categories = "",
+    level = "",
+    price = "all",
+    sort = "popular",
+  } = req.query;
+
+  /* ===================================== */
+  /* Build Match Stage */
+  /* ===================================== */
+
+  const matchStage = {
+    isPublished: true,
+    status: "approved", // only approved courses visible
+  };
+
+  // Search by title
+  if (search) {
+    matchStage.title = {
+      $regex: search,
+      $options: "i",
+    };
+  }
+
+  // Filter by categories
+  if (categories) {
+    const categoryIds = categories.split(",").map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+
+    matchStage.category = { $in: categoryIds };
+  }
+
+  // Filter by level
+  if (level) {
+    const levels = level.split(",");
+    matchStage.level = { $in: levels };
+  }
+
+  // Filter by price
+  if (price === "free") {
+    matchStage.sellingPrice = 0;
+  }
+
+  if (price === "paid") {
+    matchStage.sellingPrice = { $gt: 0 };
+  }
+
+  /* ===================================== */
+  /* Sorting */
+  /* ===================================== */
+
+  let sortStage = { createdAt: -1 };
+
+  if (sort === "popular") {
+    sortStage = { studentsCount: -1 };
+  }
+
+  if (sort === "newest") {
+    sortStage = { createdAt: -1 };
+  }
+
+  if (sort === "price-low") {
+    sortStage = { sellingPrice: 1 };
+  }
+
+  if (sort === "price-high") {
+    sortStage = { sellingPrice: -1 };
+  }
+
+  /* ===================================== */
+  /* Aggregation */
+  /* ===================================== */
+
+  const courses = await Course.aggregate([
+    { $match: matchStage },
+
+    /* ================= ENROLLMENTS ================= */
+
+    {
+      $lookup: {
+        from: "enrolleds",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "enrollments",
+      },
+    },
+
+    /* ================= REVIEWS ================= */
+
+    {
+      $lookup: {
+        from: "reviews",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "reviews",
+      },
+    },
+
+    /* ================= AUTHOR ================= */
+
+    {
+      $lookup: {
+        from: "users",
+        localField: "author",
+        foreignField: "_id",
+        as: "author",
+        pipeline: [
+          {
+            $project: {
+              name: 1,
+              username: 1,
+              avatar: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= ADD FIELDS ================= */
+
+    {
+      $addFields: {
+        author: { $arrayElemAt: ["$author", 0] },
+
+        studentsCount: { $size: "$enrollments" },
+
+        rating: {
+          $cond: [
+            { $gt: [{ $size: "$reviews" }, 0] },
+            { $avg: "$reviews.rating" },
+            0,
+          ],
+        },
+
+        totalReviews: { $size: "$reviews" },
+      },
+    },
+
+    {
+      $project: {
+        title: 1,
+        thumbnail: 1,
+        sellingPrice: 1,
+        printPrice: 1,
+        level: 1,
+        category: 1,
+        studentsCount: 1,
+        rating: { $round: ["$rating", 1] },
+        totalReviews: 1,
+        author: 1,
+        createdAt: 1,
+      },
+    },
+
+    { $sort: sortStage },
+  ]);
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, courses, "Public courses fetched successfully")
+    );
+});
+
+
+
 
 
 const getAdminCourses = asyncHandler(async (req, res) => {
@@ -590,6 +760,97 @@ const getAdminCourses = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, course, "Course is fetched successfully"));
 });
+
+
+
+
+export const getTeacherCourses = asyncHandler(async (req, res) => {
+  const teacherId = req.user._id;
+
+  const courses = await Course.aggregate([
+    {
+      $match: {
+        author: new mongoose.Types.ObjectId(teacherId),
+      },
+    },
+
+    /* ================= ENROLLMENTS ================= */
+
+    {
+      $lookup: {
+        from: "enrolleds",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "enrollments",
+      },
+    },
+
+    /* ================= PAYMENTS ================= */
+
+    {
+      $lookup: {
+        from: "payments",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "payments",
+        pipeline: [
+          {
+            $match: { status: "completed" },
+          },
+        ],
+      },
+    },
+
+    /* ================= REVIEWS ================= */
+
+    {
+      $lookup: {
+        from: "reviews",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "reviews",
+      },
+    },
+
+    /* ================= CALCULATIONS ================= */
+
+    {
+      $addFields: {
+        students: { $size: "$enrollments" },
+
+        revenue: {
+          $sum: "$payments.teacherAmount",
+        },
+
+        rating: {
+          $cond: [
+            { $gt: [{ $size: "$reviews" }, 0] },
+            { $avg: "$reviews.rating" },
+            0,
+          ],
+        },
+      },
+    },
+
+    {
+      $project: {
+        title: 1,
+        status: 1,
+        students: 1,
+        revenue: 1,
+        rating: { $round: ["$rating", 1] },
+        updatedAt: 1,
+      },
+    },
+
+    { $sort: { updatedAt: -1 } },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, courses, "Teacher courses fetched"));
+});
+
 
 const getPublishedCoursesData = asyncHandler(async (req, res) => {
   const { _id } = req.params;
@@ -727,6 +988,8 @@ const getPublishedCoursesData = asyncHandler(async (req, res) => {
           },
           thumbnail: 1,
           title: 1,
+          rating:1,
+          totalReviews:1,
           description: 1,
           language: 1,
           isPublished: 1,
@@ -1712,6 +1975,9 @@ const getCourseData = asyncHandler(async (req, res) => {
           title: 1,
           description: 1,
           language: 1,
+          rating:1,
+          reviews:1,
+          totalReviews:1,
           category: {
             _id: "$category._id",
             name: "$category.name",
@@ -1751,6 +2017,212 @@ const getCourseData = asyncHandler(async (req, res) => {
     console.log(error);
   }
 });
+
+const getCourseDataPublic = asyncHandler(async (req, res) => {
+  const { _id } = req.params;
+
+  if (!_id) {
+    throw new ApiError(400, "Course Id is required");
+  }
+
+  const courseData = await Course.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(_id),
+        isPublished: true,
+      },
+    },
+
+    /* ================= AUTHOR ================= */
+
+    {
+      $lookup: {
+        from: "users",
+        localField: "author",
+        foreignField: "_id",
+        as: "author",
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+              username: 1,
+              name: 1,
+              avatar: 1,
+              bio: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= FREE VIDEOS ================= */
+
+    {
+      $lookup: {
+        from: "videos",
+        localField: "_id",
+        foreignField: "course_id",
+        as: "chapters",
+        pipeline: [
+          {
+            $match: {
+              isPublished: true,
+              isFree: true,
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              videoId: 1,
+              title: 1,
+              thumbnail: 1,
+              isFree: 1,
+              createdAt: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= FREE QUIZZES ================= */
+
+    {
+      $lookup: {
+        from: "quizzes",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "quizzes",
+        pipeline: [
+          {
+            $match: {
+              isPublished: true,
+              isFree: true,
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              title: 1,
+              isFree: 1,
+              createdAt: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= ENROLLED COUNT ================= */
+
+    {
+      $lookup: {
+        from: "enrolleds",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "enrolledStudent",
+      },
+    },
+
+    /* ================= COMMENTS (NO LIKE LOGIC) ================= */
+
+    {
+      $lookup: {
+        from: "comments",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "comments",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "user_Id",
+              foreignField: "_id",
+              as: "author",
+              pipeline: [
+                {
+                  $project: {
+                    _id: 1,
+                    username: 1,
+                    name: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              author: { $arrayElemAt: ["$author", 0] },
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              comment: 1,
+              createdAt: 1,
+              author: 1,
+            },
+          },
+        ],
+      },
+    },
+
+    /* ================= COURSE VIEWS ================= */
+
+    {
+      $lookup: {
+        from: "views",
+        localField: "_id",
+        foreignField: "course_Id",
+        as: "viewers",
+      },
+    },
+
+    /* ================= ADD CALCULATED FIELDS ================= */
+
+    {
+      $addFields: {
+        author: { $arrayElemAt: ["$author", 0] },
+        enrolledStudentCount: { $size: "$enrolledStudent" },
+        commentCount: { $size: "$comments" },
+        views: { $size: "$viewers" },
+      },
+    },
+
+    /* ================= FINAL PROJECTION ================= */
+
+    {
+      $project: {
+        author: 1,
+        thumbnail: 1,
+        title: 1,
+        description: 1,
+        language: 1,
+        printPrice: 1,
+        sellingPrice: 1,
+        discount: 1,
+        enrolledStudentCount: 1,
+        commentCount: 1,
+        comments: 1,
+        views: 1,
+        chapters: 1,
+        quizzes: 1,
+      },
+    },
+  ]);
+
+  if (!courseData.length) {
+    throw new ApiError(404, "Course not found");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      courseData[0],
+      "Public course data fetched successfully"
+    )
+  );
+});
+
 
 const getEditCourseData = asyncHandler(async (req, res) => {
   const { _id } = req.params;
@@ -2108,6 +2580,329 @@ const reorderChapters = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, course, "Chapters reordered successfully"));
 });
 
+
+/* ================= MARK VIDEO COMPLETED ================= */
+
+ const markVideoCompleted = asyncHandler(async (req, res) => {
+  const { courseId, videoId } = req.body;
+  const userId = req.user._id;
+
+  if (!courseId || !videoId) {
+    throw new ApiError(400, "CourseId and VideoId required");
+  }
+
+  const video = await Video.findOne({
+    videoId: videoId,
+    course_id: courseId,
+    isPublished: true,
+  });
+
+  const enrollment = await Enrolled.findOne({
+    user_Id: userId,
+    course_Id: courseId,
+  });
+
+  if (!enrollment) {
+    throw new ApiError(404, "User not enrolled in this course");
+  }
+
+  const alreadyCompleted = enrollment.completedVideos.some(
+    (id) => id.toString() === video._id.toString()
+  );
+
+  if (!alreadyCompleted) {
+    enrollment.completedVideos.push(
+      new mongoose.Types.ObjectId(video._id)
+    );
+  }
+
+  const totalVideos = await Video.countDocuments({
+    course_id: courseId,
+    isPublished: true,
+  });
+
+  if (totalVideos > 0) {
+    enrollment.progress = Math.floor(
+      (enrollment.completedVideos.length / totalVideos) * 100
+    );
+  }
+
+  if (enrollment.progress >= 100) {
+    enrollment.isCompleted = true;
+  }
+
+  await enrollment.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, enrollment, "Progress updated"));
+});
+
+
+ const updateLastWatched = asyncHandler(async (req, res) => {
+  const { courseId, videoId ,playedSeconds } = req.body;
+
+  
+  const video = await Video.findOne({
+    videoId: videoId,
+    course_id: courseId,
+    isPublished: true,
+  });
+
+
+  if(!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  await Enrolled.findOneAndUpdate(
+    { user_Id: req.user._id, course_Id: courseId },
+    { lastWatchedVideo: video._id,
+       lastPlayedTime: playedSeconds || 0,
+     },
+    { new: true }
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Last watched updated"));
+});
+
+
+
+export const getMyCourses = asyncHandler(async (req, res) => {
+
+  if (!req.user) {
+    throw new ApiError(401, "Unauthorized");
+  }
+try {
+  
+    const page = Number(req.query.page) || 1;
+    const limit = 8;
+    const skip = (page - 1) * limit;
+  
+    const enrollments = await Enrolled.find({
+      user_Id: req.user._id,
+    })
+      .populate({
+        path: "course_Id",
+        select: "title thumbnail sellingPrice",
+      })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+  
+    const total = await Enrolled.countDocuments({
+      user_Id: req.user._id,
+    });
+  
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          courses: enrollments,
+          total,
+          page,
+          totalPages: Math.ceil(total / limit),
+        },
+        "My courses fetched successfully"
+      )
+    );
+} catch (error) {
+  console.log(error)
+}
+});
+
+
+
+
+;
+
+export const generateCertificate = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+
+  const enrollment = await Enrolled.findOne({
+    user_Id: req.user._id,
+    course_Id: courseId,
+    isCompleted: true,
+  });
+
+  if (!enrollment) {
+    throw new ApiError(400, "Course not completed yet");
+  }
+
+  const doc = new PDFDocument();
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=certificate.pdf`
+  );
+
+  doc.pipe(res);
+
+  doc.fontSize(30).text("Certificate of Completion", {
+    align: "center",
+  });
+
+  doc.moveDown();
+  doc.fontSize(20).text(req.user.name, { align: "center" });
+
+  doc.end();
+});
+
+
+export const getAnalytics = asyncHandler(async (req, res) => {
+  const result = await StudyLog.aggregate([
+    { $match: { user_Id: req.user._id } },
+    {
+      $group: {
+        _id: null,
+        totalMinutes: { $sum: "$minutesSpent" },
+      },
+    },
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        totalStudyMinutes: result[0]?.totalMinutes || 0,
+      },
+      "Analytics fetched"
+    )
+  );
+});
+
+export const calculateCourseRating = async (courseId) => {
+
+  const stats = await Review.aggregate([
+    {
+      $match: {
+        course_Id: new mongoose.Types.ObjectId(courseId),
+      },
+    },
+    {
+      $group: {
+        _id: "$course_Id",
+        averageRating: { $avg: "$rating" },
+        totalReviews: { $sum: 1 },
+      },
+    },
+  ]);
+
+  if (stats.length > 0) {
+    await Course.findByIdAndUpdate(courseId, {
+      rating: stats[0].averageRating,
+      totalReviews: stats[0].totalReviews,
+    });
+  } else {
+    await Course.findByIdAndUpdate(courseId, {
+      rating: 0,
+      totalReviews: 0,
+    });
+  }
+};
+
+export const addOrUpdateReview = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+  const { rating, description } = req.body;
+
+  if (!rating || rating < 1 || rating > 5) {
+    throw new ApiError(400, "Rating must be between 1-5");
+  }
+
+  const review = await Review.findOneAndUpdate(
+    {
+      user_Id: req.user._id,
+      course_Id: courseId,
+    },
+    {
+      rating,
+      description,
+    },
+    {
+      new: true,
+      upsert: true,
+    }
+  );
+
+  /* Update course average rating */
+
+  const stats = await Review.aggregate([
+    {
+      $match: {
+        course_Id: new mongoose.Types.ObjectId(courseId),
+      },
+    },
+    {
+      $group: {
+        _id: "$course_Id",
+        avgRating: { $avg: "$rating" },
+        totalReviews: { $sum: 1 },
+      },
+    },
+  ]);
+
+  await Course.findByIdAndUpdate(courseId, {
+    rating: stats[0]?.avgRating || 0,
+    totalReviews: stats[0]?.totalReviews || 0,
+  });
+
+  await calculateCourseRating(courseId);
+
+  return res.status(200).json(
+    new ApiResponse(200, review, "Review submitted successfully")
+  );
+});
+
+
+
+
+export const getCourseReviews = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+
+  const reviews = await Review.aggregate([
+    {
+      $match: {
+        course_Id: new mongoose.Types.ObjectId(courseId),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "user_Id",
+        foreignField: "_id",
+        as: "user",
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+              name: 1,
+              username: 1,
+              avatar: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $addFields: {
+        user: { $arrayElemAt: ["$user", 0] },
+      },
+    },
+    {
+      $sort: { createdAt: -1 },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, reviews, "Reviews fetched"));
+});
+
+
+
+
 export {
   addCourse,
   updateCourse,
@@ -2123,6 +2918,7 @@ export {
   getData,
   getAllCourses,
   
+  getCourseDataPublic,
   getPublishedCoursesData,
   getAdminCourses,
   getCourseData,
@@ -2131,4 +2927,6 @@ export {
   getFreeVideos,
   addChapter,
   reorderChapters,
+  markVideoCompleted,
+  updateLastWatched
 };

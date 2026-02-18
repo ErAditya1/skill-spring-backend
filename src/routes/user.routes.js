@@ -28,6 +28,7 @@ import {
   resetPassword,
   getProfile,
   handleSocialLogin,
+  getTeacherProfile,
 } from "../controllers/user.controller.js";
 
 const router = Router();
@@ -87,6 +88,7 @@ router
   .route("/cover-image")
   .patch(verifyJWT, upload.single("coverImage"), updateUserCoverImage);
 
+router.route("/teacher-profile/:username").get(verifyJWT, getTeacherProfile);
 router.route("/get-user-profile/:username").get(verifyJWT, getUserProfile);
 router.route("/get-user-profile").get(verifyJWT, getProfile);
 router.route("/get-user-account/:_id").get(verifyJWT, getUserAccount);

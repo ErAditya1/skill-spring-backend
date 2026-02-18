@@ -68,6 +68,7 @@ export const pushNotification = async(id)=>{
     },
     tag: "message-notification"
   };
+  
   const res = await webpush.sendNotification(user.subscription, JSON.stringify( message ));
   console.log(res);
   return

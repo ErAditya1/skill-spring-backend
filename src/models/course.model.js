@@ -2,24 +2,21 @@ import mongoose, { Schema } from "mongoose";
 
 const courseSchema = new Schema(
   {
-   
     author: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
-    }, 
-    category:{
+    },
+    category: {
       type: Schema.Types.ObjectId,
       ref: "Category",
     },
-    thumbnail:  {
-      public_id:{
+    thumbnail: {
+      public_id: {
         type: String,
-        
       },
-      secure_url:{
+      secure_url: {
         type: String,
-        
       },
     },
     title: {
@@ -28,12 +25,10 @@ const courseSchema = new Schema(
     },
     description: {
       type: String,
-      
     },
     language: {
       type: String,
-      enum:["English", "Hindi"],
-      
+      enum: ["English", "Hindi"],
     },
     isPublished: {
       type: Boolean,
@@ -44,7 +39,6 @@ const courseSchema = new Schema(
     },
     sellingPrice: {
       type: Number,
-      
     },
     // 🔥 Approval Workflow Status
     status: {
@@ -52,23 +46,28 @@ const courseSchema = new Schema(
       enum: ["draft", "pending", "approved", "rejected"],
       default: "draft",
     },
-    discount:{
+    discount: {
       type: Number,
-      
     },
     from: {
       type: Date,
-      
     },
     to: {
       type: Date,
-      
     },
-    
+    rating: {
+      type: Number,
+      default: 0,
+    },
+
+    totalReviews: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 export const Course = mongoose.model("Course", courseSchema);

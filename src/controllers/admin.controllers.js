@@ -408,3 +408,158 @@ export const updateUserRole = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, user, "User role updated successfully"));
 });
+
+// teacher earnings
+
+import { Payment } from "../models/payment.model.js";
+import mongoose from "mongoose";
+
+export const getTeacherEarnings = asyncHandler(async (req, res) => {
+  const teacherId = req.user._id;
+  const range = Number(req.query.range) || 30;
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - range);
+
+  /* ================= TOTAL EARNINGS ================= */
+
+  const totalAgg = await Payment.aggregate([
+    {
+      $match: {
+        teacher_Id: new mongoose.Types.ObjectId(teacherId),
+        status: "completed",
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: "$teacherAmount" },
+      },
+    },
+  ]);
+
+  const totalEarnings = totalAgg[0]?.total || 0;
+
+  /* ================= PERIOD EARNINGS ================= */
+
+  const periodAgg = await Payment.aggregate([
+    {
+      $match: {
+        teacher_Id: new mongoose.Types.ObjectId(teacherId),
+        status: "completed",
+        createdAt: { $gte: startDate },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: "$teacherAmount" },
+      },
+    },
+  ]);
+
+  const monthlyEarnings = periodAgg[0]?.total || 0;
+
+  /* ================= PREVIOUS PERIOD (FOR GROWTH) ================= */
+
+  const prevStart = new Date(startDate);
+  prevStart.setDate(prevStart.getDate() - range);
+
+  const prevAgg = await Payment.aggregate([
+    {
+      $match: {
+        teacher_Id: new mongoose.Types.ObjectId(teacherId),
+        status: "completed",
+        createdAt: {
+          $gte: prevStart,
+          $lt: startDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: "$teacherAmount" },
+      },
+    },
+  ]);
+
+  const previousTotal = prevAgg[0]?.total || 0;
+
+  const growthRate =
+    previousTotal === 0
+      ? 100
+      : (((monthlyEarnings - previousTotal) / previousTotal) * 100).toFixed(1);
+
+  /* ================= PENDING BALANCE ================= */
+
+  const pendingAgg = await Payment.aggregate([
+    {
+      $match: {
+        teacher_Id: new mongoose.Types.ObjectId(teacherId),
+        status: "pending",
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: "$teacherAmount" },
+      },
+    },
+  ]);
+
+  const pendingBalance = pendingAgg[0]?.total || 0;
+
+  /* ================= NEXT PAYOUT ================= */
+
+  const nextPayoutDate = new Date();
+  nextPayoutDate.setDate(nextPayoutDate.getDate() + 7);
+
+  const nextPayoutAmount = pendingBalance;
+
+  /* ================= TRANSACTIONS ================= */
+
+  const transactions = await Payment.aggregate([
+    {
+      $match: {
+        teacher_Id: new mongoose.Types.ObjectId(teacherId),
+      },
+    },
+    {
+      $lookup: {
+        from: "courses",
+        localField: "course_Id",
+        foreignField: "_id",
+        as: "course",
+      },
+    },
+    {
+      $addFields: {
+        course: { $arrayElemAt: ["$course", 0] },
+      },
+    },
+    {
+      $group: {
+        _id: "$course_Id",
+        courseTitle: { $first: "$course.title" },
+        amount: { $sum: "$teacherAmount" },
+        students: { $sum: 1 },
+        date: { $max: "$createdAt" },
+      },
+    },
+    { $sort: { date: -1 } },
+    { $limit: 10 },
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalEarnings,
+      monthlyEarnings,
+      pendingBalance,
+      growthRate,
+      nextPayoutAmount,
+      nextPayoutDate,
+      transactions,
+    })
+  );
+});

@@ -1,9 +1,20 @@
 import { Router } from "express";
 import { isAdmin, verifyJWT } from "../middelwares/auth.middelware.js";
-import { approveCourse, createCategory, deleteCategory, deleteUser, getAdminDashboard, getAllApprovalCourse, getAllCategories, getAllUsers, getPendingCourses, toggleBlockUser, updateCategory, updateUserRole } from "../controllers/admin.controllers.js";
+import { approveCourse, createCategory, deleteCategory, deleteUser, getAdminDashboard, getAllApprovalCourse, getAllCategories, getAllUsers, getPendingCourses, getTeacherEarnings, toggleBlockUser, updateCategory, updateUserRole } from "../controllers/admin.controllers.js";
 
 
 const router = Router()
+
+// teacher earnings
+router.get(
+  "/teacher-earnings",
+  verifyJWT,
+  getTeacherEarnings
+);
+
+
+
+
 // dashboard routes
 router.route("/dashboard").get(verifyJWT, isAdmin, getAdminDashboard);
 router.route("/pending-courses").get( verifyJWT, isAdmin, getPendingCourses);

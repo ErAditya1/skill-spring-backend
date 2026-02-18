@@ -13,6 +13,7 @@ import { File } from "../models/file.model.js";
 import { View } from "../models/view.model.js";
 
 import natural from "natural";
+import { Enrolled } from "../models/enrolled.model.js";
 
 export const getVideoInfo = (url) => {
   // Regular expressions for different YouTube URLs
@@ -805,209 +806,26 @@ const getVideoData = asyncHandler(async (req, res) => {
 });
 const getPlayingVideo = asyncHandler(async (req, res) => {
   const { _id } = req.params;
+
   if (!_id) {
     throw new ApiError(404, "Video Id is required");
   }
-  const video = await Video.findOne({
-    videoId: _id,
-  });
+
+  const video = await Video.findOne({ videoId: _id });
+
   if (!video) {
     throw new ApiError(404, "Video not found");
   }
+
+  /* ================= VIDEO AGGREGATE ================= */
+
   const videoData = await Video.aggregate([
     {
       $match: {
-        _id: new mongoose.Types.ObjectId(video?._id),
+        _id: new mongoose.Types.ObjectId(video._id),
       },
     },
 
-    // collect fallowings
-    {
-      $lookup: {
-        from: "follows",
-        localField: "author",
-        foreignField: "follower",
-        as: "followings",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "following",
-              foreignField: "_id",
-              as: "author",
-              pipeline: [
-                {
-                  $project: {
-                    _id: 1,
-                    username: 1,
-                    name: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $lookup: {
-              from: "follows",
-              localField: "follower",
-              foreignField: "following",
-              as: "follower",
-              pipeline: [
-                {
-                  $project: {
-                    following: 1,
-                    follower: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $lookup: {
-              from: "follows",
-              localField: "follower",
-              foreignField: "follower",
-              as: "following",
-              pipeline: [
-                {
-                  $project: {
-                    following: 1,
-                    follower: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $addFields: {
-              author: {
-                $arrayElemAt: ["$author", 0],
-              },
-
-              isFollowingToMe: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$following.following"] },
-                  then: true,
-                  else: false,
-                },
-              },
-              isIamFollowing: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$follower.follower"] },
-                  then: true,
-                  else: false,
-                },
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              author: 1,
-              isFollowingToMe: 1,
-              isIamFollowing: 1,
-              following: 1,
-              follower: 1,
-            },
-          },
-        ],
-      },
-    },
-    // collect fallowers
-    {
-      $lookup: {
-        from: "follows",
-        localField: "author",
-        foreignField: "following",
-        as: "followers",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "follower",
-              foreignField: "_id",
-              as: "author",
-              pipeline: [
-                {
-                  $project: {
-                    _id: 1,
-                    username: 1,
-                    name: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $lookup: {
-              from: "follows",
-              localField: "follower",
-              foreignField: "following",
-              as: "follower",
-              pipeline: [
-                {
-                  $project: {
-                    following: 1,
-                    follower: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $lookup: {
-              from: "follows",
-              localField: "follower",
-              foreignField: "follower",
-              as: "following",
-              pipeline: [
-                {
-                  $project: {
-                    following: 1,
-                    follower: 1,
-                  },
-                },
-              ],
-            },
-          },
-
-          {
-            $addFields: {
-              author: {
-                $arrayElemAt: ["$author", 0],
-              },
-              isFollowingToMe: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$following.following"] },
-                  then: true,
-                  else: false,
-                },
-              },
-              isIamFollowing: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$follower.follower"] },
-                  then: true,
-                  else: false,
-                },
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              author: 1,
-              isFollowingToMe: 1,
-              isIamFollowing: 1,
-              following: 1,
-              follower: 1,
-            },
-          },
-        ],
-      },
-    },
-    // Getting author of the video
     {
       $lookup: {
         from: "users",
@@ -1026,713 +844,90 @@ const getPlayingVideo = asyncHandler(async (req, res) => {
         ],
       },
     },
-     // getting files
-     {
-      $lookup: {
-        from: "files",
-        localField: "_id",
-        foreignField: "video_Id",
-        as: "files",
-        pipeline: [
-          {
-            $project: {
-              _id: 1,
-              title: 1,
-              file: 1,
-            },
-          },
-        ],
-      },
-    },
 
-    // getting comments about video
-    {
-      $lookup: {
-        from: "comments",
-        localField: "_id",
-        foreignField: "video_Id",
-        as: "comments",
-        pipeline: [
-          // Lookup for comment author
-          {
-            $lookup: {
-              from: "users",
-              localField: "user_Id",
-              foreignField: "_id",
-              as: "author",
-              pipeline: [
-                {
-                  $project: {
-                    _id: 1,
-                    username: 1,
-                    name: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
-            },
-          },
-          // lookup for comments reply
-          {
-            $lookup: {
-              from: "comments",
-              localField: "_id",
-              foreignField: "comment_Id",
-              as: "commentsReply",
-
-              pipeline: [
-                // lookup for author of coments reply
-                {
-                  $lookup: {
-                    from: "users",
-                    localField: "user_Id",
-                    foreignField: "_id",
-                    as: "author",
-                    pipeline: [
-                      {
-                        $project: {
-                          _id: 1,
-                          username: 1,
-                          name: 1,
-                          avatar: 1,
-                        },
-                      },
-                    ],
-                  },
-                },
-                // lookup for likes of comment reply
-                {
-                  $lookup: {
-                    from: "likes",
-                    localField: "_id",
-                    foreignField: "comment_Id",
-                    as: "likes",
-                    pipeline: [
-                      {
-                        $lookup: {
-                          from: "users",
-                          localField: "user_Id",
-                          foreignField: "_id",
-                          as: "author",
-                          pipeline: [
-                            {
-                              $project: {
-                                _id: 1,
-                                username: 1,
-                                name: 1,
-                                avatar: 1,
-                              },
-                            },
-                          ],
-                        },
-                      },
-
-                      {
-                        $addFields: {
-                          author: {
-                            $arrayElemAt: ["$author", 0],
-                          },
-                        },
-                      },
-                    ],
-                  },
-                },
-                // add fields in comments reply
-                {
-                  $addFields: {
-                    author: {
-                      $arrayElemAt: ["$author", 0],
-                    },
-                    isAuthor: {
-                      $cond: {
-                        if: { $in: [req.user?._id, "$author._id"] },
-                        then: true,
-                        else: false,
-                      },
-                    },
-
-                    likeCount: {
-                      $size: "$likes",
-                    },
-                    isLiked: {
-                      $cond: {
-                        if: { $in: [req.user?._id, "$likes.user_Id"] },
-                        then: true,
-                        else: false,
-                      },
-                    },
-                  },
-                },
-                // projection of comment reply
-                {
-                  $project: {
-                    _id: 1,
-                    author: 1,
-                    isAuthor: 1,
-                    createdAt: 1,
-                    likeCount: 1,
-                    isLiked: 1,
-                    likes: 1,
-                    comment: 1,
-                  },
-                },
-              ],
-            },
-          },
-          // lookup for likes of comments
-          {
-            $lookup: {
-              from: "likes",
-              localField: "_id",
-              foreignField: "comment_Id",
-              as: "likes",
-              pipeline: [
-                {
-                  $lookup: {
-                    from: "users",
-                    localField: "user_Id",
-                    foreignField: "_id",
-                    as: "author",
-                    pipeline: [
-                      {
-                        $project: {
-                          _id: 1,
-                          username: 1,
-                          name: 1,
-                          avatar: 1,
-                        },
-                      },
-                    ],
-                  },
-                },
-
-                {
-                  $addFields: {
-                    author: {
-                      $arrayElemAt: ["$author", 0],
-                    },
-                  },
-                },
-              ],
-            },
-          },
-          // add fields in comment
-          {
-            $addFields: {
-              author: {
-                $arrayElemAt: ["$author", 0],
-              },
-              isAuthor: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$author._id"] },
-                  then: true,
-                  else: false,
-                },
-              },
-              replyCount: {
-                $size: "$commentsReply",
-              },
-              likeCount: {
-                $size: "$likes",
-              },
-              isLiked: {
-                $cond: {
-                  if: { $in: [req.user?._id, "$likes.user_Id"] },
-                  then: true,
-                  else: false,
-                },
-              },
-            },
-          },
-          // projection in comment
-          {
-            $project: {
-              _id: 1,
-              author: 1,
-              isAuthor: 1,
-              comment: 1,
-              createdAt: 1,
-              commentsReply: 1,
-              replyCount: 1,
-              likeCount: 1,
-              isLiked: 1,
-              likes: 1,
-            },
-          },
-        ],
-      },
-    },
-    // getting likes
-    {
-      $lookup: {
-        from: "likes",
-        localField: "_id",
-        foreignField: "video_Id",
-        as: "likes",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "user_Id",
-              foreignField: "_id",
-              as: "author",
-              pipeline: [
-                {
-                  $project: {
-                    _id: 1,
-                    username: 1,
-                    name: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
-            },
-          },
-
-          {
-            $addFields: {
-              author: {
-                $arrayElemAt: ["$author", 0],
-              },
-            },
-          },
-        ],
-      },
-    },
-    // getting views
-    {
-      $lookup: {
-        from: "views",
-        localField: "_id",
-        foreignField: "video_Id",
-        as: "viewers",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "user_Id",
-              foreignField: "_id",
-              as: "viewer",
-              pipeline: [
-                {
-                  $project: {
-                    _id: 1,
-                    username: 1,
-                    name: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $addFields: {
-              viewer: {
-                $arrayElemAt: ["$viewer", 0],
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              viewer: 1,
-            },
-          },
-        ],
-      },
-    },
-    // adding fields
     {
       $addFields: {
-        author: {
-          $arrayElemAt: ["$author", 0],
-        },
-        isAuthor: {
-          $cond: {
-            if: { $in: [req.user?._id, "$author._id"] },
-            then: true,
-            else: false,
-          },
-        },
-        followersCount: {
-          $size: "$followers",
-        },
-        isFollowing: {
-          $cond: {
-            if: { $in: [req.user?._id, "$followers.author._id"] },
-            then: true,
-            else: false,
-          },
-        },
-        uploadedDate: {
-          $toDate: "$createdAt", // Convert the timestamp to a Date object
-        },
-
-        commentCount: {
-          $size: "$comments",
-        },
-        likeCount: {
-          $size: "$likes",
-        },
-        isLiked: {
-          $cond: {
-            if: { $in: [req.user?._id, "$likes.user_Id"] },
-            then: true,
-            else: false,
-          },
-        },
-        views: {
-          $size: "$viewers",
-        },
-      },
-    },
-    // projection
-    {
-      $project: {
-        author: 1,
-        isAuthor: 1,
-        files: 1,
-        followersCount: 1,
-        isFollowing: 1,
-        videoId: 1,
-        thumbnail: 1,
-        title: 1,
-        description: 1,
-        durations: 1,
-        comments: 1,
-        commentCount: 1,
-        likeCount: 1,
-        isLiked: 1,
-        likes: 1,
-        isFree: 1,
-        views: 1,
-        viewers: 1,
-        uploadedDate: 1,
+        author: { $arrayElemAt: ["$author", 0] },
+        uploadedDate: { $toDate: "$createdAt" },
       },
     },
   ]);
-  if (video?.course_id) {
-    const courseData = await Course.aggregate([
-      {
-        $match: {
-          _id: new mongoose.Types.ObjectId(video?.course_id),
-        },
-      },
 
-      // Free videos
-      {
-        $lookup: {
-          from: "videos",
-          localField: "_id",
-          foreignField: "course_id",
-          as: "freeChapters",
-          pipeline: [
-            {
-              $match: {
-                $and: [{ isFree: false }, { isPublished: true }],
-              },
-            },
-            {
-              $lookup: {
-                from: "users",
-                localField: "author",
-                foreignField: "_id",
-                as: "author",
-                pipeline: [
-                  {
-                    $project: {
-                      _id: 1,
-                      username: 1,
-                      name: 1,
-                      avatar: 1,
-                    },
-                  },
-                ],
-              },
-            },
-            // getting views
-            {
-              $lookup: {
-                from: "views",
-                localField: "_id",
-                foreignField: "video_Id",
-                as: "viewers",
-                pipeline: [
-                  {
-                    $lookup: {
-                      from: "users",
-                      localField: "user_Id",
-                      foreignField: "_id",
-                      as: "userData",
-                      pipeline: [
-                        {
-                          $project: {
-                            _id: 1,
-                            username: 1,
-                            name: 1,
-                            avatar: 1,
-                          },
-                        },
-                      ],
-                    },
-                  },
-                  {
-                    $addFields: {
-                      viewer: {
-                        $arrayElemAt: ["$viewer", 0],
-                      },
-                    },
-                  },
-                  {
-                    $project: {
-                      _id: 1,
-                      viewer: 1,
-                    },
-                  },
-                ],
-              },
-            },
-            {
-              $addFields: {
-                channelName: {
-                  $arrayElemAt: ["$author.name", 0],
-                },
-                views: {
-                  $size: "$viewers",
-                },
-                uploadedDate: {
-                  $toDate: "$createdAt", // Convert the timestamp to a Date object
-                },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                videoId: 1,
-                isFree: 1,
-                title: 1,
-                isPublished: 1,
-                thumbnail: 1,
-                channelName: 1,
-                views: 1,
-                uploadedDate: 1,
-              },
-            },
-          ],
-        },
-      },
-      // all videos
-      {
-        $lookup: {
-          from: "videos",
-          localField: "_id",
-          foreignField: "course_id",
-          as: "chapters",
-          pipeline: [
-            {
-              $match: {
-                isPublished: true,
-              },
-            },
-            {
-              $lookup: {
-                from: "users",
-                localField: "author",
-                foreignField: "_id",
-                as: "author",
-                pipeline: [
-                  {
-                    $project: {
-                      _id: 1,
-                      username: 1,
-                      name: 1,
-                      avatar: 1,
-                    },
-                  },
-                ],
-              },
-            },
-            // getting views
-            {
-              $lookup: {
-                from: "views",
-                localField: "_id",
-                foreignField: "video_Id",
-                as: "viewers",
-                pipeline: [
-                  {
-                    $lookup: {
-                      from: "users",
-                      localField: "user_Id",
-                      foreignField: "_id",
-                      as: "userData",
-                      pipeline: [
-                        {
-                          $project: {
-                            _id: 1,
-                            username: 1,
-                            name: 1,
-                            avatar: 1,
-                          },
-                        },
-                      ],
-                    },
-                  },
-                  {
-                    $addFields: {
-                      viewer: {
-                        $arrayElemAt: ["$viewer", 0],
-                      },
-                    },
-                  },
-                  {
-                    $project: {
-                      _id: 1,
-                      viewer: 1,
-                    },
-                  },
-                ],
-              },
-            },
-            {
-              $addFields: {
-                channelName: {
-                  $arrayElemAt: ["$author.name", 0],
-                },
-                views: {
-                  $size: "$viewers",
-                },
-                uploadedDate: {
-                  $toDate: "$createdAt", // Convert the timestamp to a Date object
-                },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                videoId: 1,
-                isFree: 1,
-                title: 1,
-                isPublished: 1,
-                thumbnail: 1,
-                channelName: 1,
-                views: 1,
-                uploadedDate: 1,
-              },
-            },
-          ],
-        },
-      },
+  if (!videoData.length) {
+    throw new ApiError(404, "Video not found");
+  }
 
-      // getting enrolled student
-      {
-        $lookup: {
-          from: "enrolleds",
-          localField: "_id",
-          foreignField: "course_Id",
-          as: "enrolledStudent",
-          pipeline: [
-            {
-              $lookup: {
-                from: "users",
-                localField: "user_Id",
-                foreignField: "_id",
-                as: "studentData",
-                pipeline: [
-                  {
-                    $project: {
-                      _id: 1,
-                    },
-                  },
-                ],
-              },
-            },
-            {
-              $addFields: {
-                studentData: {
-                  $arrayElemAt: ["$studentData", 0],
-                },
-              },
-            },
-            {
-              $project: {
-                studentData: 1,
-                isEnrolled: 1,
-              },
-            },
-          ],
-        },
-      },
-      // adding fields
-      {
-        $addFields: {
-          enrolledStudentCount: {
-            $size: "$enrolledStudent",
-          },
-          isEnrolled: {
-            $cond: {
-              if: { $in: [req.user?._id, "$enrolledStudent.studentData._id"] },
-              then: true,
-              else: false,
-            },
-          },
-          chapters: {
-            $filter: {
-              input: "$chapters",
-              as: "chapter",
-              cond: {
-                $or: [
-                  { $eq: [req.user?._id, "$author._id"] },
-                  { $eq: ["$$chapter.isFree", true] },
-                  { $in: [req.user?._id, "$enrolledStudent.studentData._id"] },
-                ],
-              },
-            },
-          },
-        },
-      },
+  /* ================= COURSE DATA ================= */
 
-      // projection
-      {
-        $project: {
-          isEnrolled: 1,
-          freeChapters: 1,
-          chapters: 1,
-        },
-      },
-    ]);
+  let courseProgress = 0;
+  let lastWatchedVideo = null;
+  let lastPlayedSeconds = 0;
+  let completedVideos = [];
+  let isCompleted = false;
 
-    if (
-      !videoData[0].isFree &&
-      !videoData[0].isAuthor &&
-      !courseData[0].isEnrolled
-    ) {
+  if (video.course_id) {
+    const course = await Course.findById(video.course_id);
+
+    if (!course) {
+      throw new ApiError(404, "Course not found");
+    }
+
+    /* ================= ENROLLMENT DATA ================= */
+
+    const enrollment = await Enrolled.findOne({
+      user_Id: req.user._id,
+      course_Id: course._id,
+    });
+
+    if (enrollment) {
+      courseProgress = enrollment.progress || 0;
+      lastWatchedVideo = enrollment.lastWatchedVideo || null;
+      lastPlayedSeconds = enrollment.lastPlayedSeconds || 0;
+      completedVideos = enrollment.completedVideos || [];
+      isCompleted = enrollment.isCompleted || false;
+    }
+
+    /* ================= GET CHAPTERS ================= */
+
+    const chapters = await Video.find({
+      course_id: course._id,
+      isPublished: true,
+    }).select("_id videoId title isFree thumbnail");
+
+    /* ================= ACCESS CONTROL ================= */
+
+    const isEnrolled = !!enrollment;
+    const isAuthor =
+      videoData[0].author._id.toString() === req.user._id.toString();
+
+    if (!video.isFree && !isAuthor && !isEnrolled) {
       return res
         .status(403)
-        .json(new ApiResponse(403, null, "Unauthorized to access this video"));
+        .json(
+          new ApiResponse(403, null, "Unauthorized to access this video")
+        );
     }
-    videoData[0].relatedVideo = courseData[0].chapters;
+
+    /* ================= ATTACH COURSE INFO ================= */
+
+    videoData[0].relatedVideo = chapters;
+    videoData[0].courseProgress = courseProgress;
+    videoData[0].lastWatchedVideo = lastWatchedVideo;
+    videoData[0].lastPlayedSeconds = lastPlayedSeconds;
+    videoData[0].completedVideos = completedVideos;
+    videoData[0].isCourseCompleted = isCompleted;
+    videoData[0].course_Id = course._id;
   }
-  const recomended = await getRecommendedVideos(
-    req,
-    videoData[0].title,
-    videoData[0].description
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      videoData[0],
+      "Video data fetched successfully"
+    )
   );
-  videoData[0].relatedVideo?.length
-    ? (videoData[0].relatedVideo = [
-        ...videoData[0].relatedVideo,
-        ...recomended,
-      ])
-    : (videoData[0].relatedVideo = recomended);
-
-  console.log('sending response');
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(200, videoData[0], "Video all deta fetched successfully")
-    );
 });
+
 
 // Initialize the TF-IDF vectorizer
 
