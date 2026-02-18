@@ -3,10 +3,74 @@ import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { Course } from "../models/course.model.js";
+import { Video } from "../models/video.model.js";
 import { User } from "../models/user.model.js";
+import { Comment } from "../models/comment.model.js";
 import { Enrolled } from "../models/enrolled.model.js";
 
 
+
+/**
+ * @desc    Get Admin Profile + Platform Stats
+ * @route   GET /v1/admin/profile
+ * @access  Private (Admin Only)
+ */
+export const getAdminProfile = asyncHandler(async (req, res) => {
+  const adminId = req.user?._id;
+
+  if (!adminId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const admin = await User.findById(adminId).select(
+    "name username email avatar role createdAt"
+  );
+
+  if (!admin) {
+    throw new ApiError(404, "Admin not found");
+  }
+
+  if (admin.role !== "admin") {
+    throw new ApiError(403, "Access denied. Admin only.");
+  }
+
+  /* ================= PLATFORM STATS ================= */
+
+  const [
+    totalUsers,
+    totalTeachers,
+    totalCourses,
+    totalVideos,
+    totalComments,
+    totalEnrollments,
+  ] = await Promise.all([
+    User.countDocuments({ role: "student" }),
+    User.countDocuments({ role: "teacher" }),
+    Course.countDocuments(),
+    Video.countDocuments(),
+    Comment.countDocuments(),
+    Enrolled.countDocuments(),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      _id: admin._id,
+      name: admin.name,
+      username: admin.username,
+      email: admin.email,
+      avatar: admin.avatar,
+      role: admin.role,
+      joinedAt: admin.createdAt,
+
+      totalUsers,
+      totalTeachers,
+      totalCourses,
+      totalVideos,
+      totalComments,
+      totalEnrollments,
+    }, "Admin profile fetched successfully")
+  );
+});
 
 
 

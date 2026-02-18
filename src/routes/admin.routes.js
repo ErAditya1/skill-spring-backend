@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { isAdmin, verifyJWT } from "../middelwares/auth.middelware.js";
-import { approveCourse, createCategory, deleteCategory, deleteUser, getAdminDashboard, getAllApprovalCourse, getAllCategories, getAllUsers, getPendingCourses, getTeacherEarnings, toggleBlockUser, updateCategory, updateUserRole } from "../controllers/admin.controllers.js";
+import { approveCourse, createCategory, deleteCategory, deleteUser, getAdminDashboard, getAdminProfile, getAllApprovalCourse, getAllCategories, getAllUsers, getPendingCourses, getTeacherEarnings, toggleBlockUser, updateCategory, updateUserRole } from "../controllers/admin.controllers.js";
 
 
 const router = Router()
@@ -12,6 +12,8 @@ router.get(
   getTeacherEarnings
 );
 
+
+router.get("/profile", verifyJWT, getAdminProfile);
 
 
 
