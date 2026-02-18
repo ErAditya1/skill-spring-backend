@@ -228,7 +228,7 @@ const registerUser = asyncHandler(async (req, res) => {
       role,
       verifyCode: verifyCode,
       verifyCodeExpiry: CodeExpiryTime,
-      // emailVerified:true
+      emailVerified:true
     });
     const createdUser = await User.findById(user._id).select(
       "-password -refreshToken",
@@ -240,7 +240,7 @@ const registerUser = asyncHandler(async (req, res) => {
         "Something went wrong while registering the user",
       );
     }
-    const emailResponse = await sendVerificationEmail({
+    const emailResponse =  sendVerificationEmail({
       email,
       username: createdUser.username,
       verifyCode,
