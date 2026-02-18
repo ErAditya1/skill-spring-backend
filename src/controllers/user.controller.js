@@ -19,6 +19,7 @@ import {
 import { UUID } from "mongodb";
 import { CodeExpiryTime } from "../constants.js";
 
+
 export const generateAccessAndRefereshTokens = async (userId, req) => {
   try {
     console.log("Generating access and refresh tokens");
@@ -341,9 +342,10 @@ const handleSocialLogin = asyncHandler(async (req, res) => {
 
   const options = {
     httpOnly: true, // Cannot be accessed by JavaScript
-    secure: true,
-    maxAge: 3600 * 1000,
-    sameSite: "None",
+    secure:process.env.NODE_ENV === "production",
+    maxAge: 1000 * 60 * 60 * 24 * 10, // 10 days (match your refresh expiry),
+    sameSite: process.env.NODE_ENV === "production"? "None" : "Lax",
+    path: "/",
   };
 
   return res
@@ -533,9 +535,10 @@ const loginUser = asyncHandler(async (req, res) => {
   // Set the cookie options
   const cookieOptions = {
     httpOnly: true, // Cannot be accessed by JavaScript
-    secure: true,
-    maxAge: 3600 * 1000,
-    sameSite: "None",
+    secure:process.env.NODE_ENV === "production",
+    maxAge: 1000 * 60 * 60 * 24 * 10, // 10 days (match your refresh expiry),
+    sameSite: process.env.NODE_ENV === "production"? "None" : "Lax",
+    path: "/",
   };
 
   sendWelcomeBackEmail({
@@ -669,9 +672,10 @@ const logOutUser = asyncHandler(async (req, res) => {
 
   const options = {
     httpOnly: true, // Cannot be accessed by JavaScript
-    secure: true,
-    maxAge: 3600 * 1000,
-    sameSite: "None",
+    secure:process.env.NODE_ENV === "production",
+    maxAge: 1000 * 60 * 60 * 24 * 10, // 10 days (match your refresh expiry)
+    sameSite: process.env.NODE_ENV === "production"? "None" : "Lax",
+    path: "/",
   };
   return res
     .status(200)
@@ -748,9 +752,10 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     // Generate new access and refresh tokens
     const options = {
       httpOnly: true, // Cannot be accessed by JavaScript
-      secure: true,
-      maxAge: 3600 * 1000,
-      sameSite: "None",
+      secure:process.env.NODE_ENV === "production",
+      maxAge: 1000 * 60 * 60 * 24 * 10, // 10 days (match your refresh expiry)
+      sameSite: process.env.NODE_ENV === "production"? "None" : "Lax",
+      path: "/",
     };
 
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
